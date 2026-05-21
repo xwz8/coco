@@ -813,12 +813,41 @@ function reviewCount(w){ return Math.min(REVIEW_TOTAL, Math.max(0, w.step||0)); 
 function dueDate(start,w){ if(!isReviewing(w)) return null; return addDays(w.reviewStartDate||start,REVIEW_DAYS[Math.min(w.step,REVIEW_TOTAL-1)]); }
 function isDue(start,w){ const d=dueDate(start,w); return !!d&&d<=todayKey(); }
 function isActiveForStudy(start,w){ return !isDone(w)&&(!isReviewing(w)||isDue(start,w)); }
+function normalizeWordKey(text){
+    return (text||'').normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
+}
+function dedupeForgottenLibraryWords(words){
+    const merged=[], indexByKey=new Map();
+    for(const raw of (Array.isArray(words)?words:[])){
+        if(!raw) continue;
+        const entry={...raw};
+        if(entry.word) entry.word=entry.word.normalize('NFKC').replace(/\s+/g,' ').trim();
+        if(entry.def) entry.def=entry.def.trim();
+        const key=normalizeWordKey(entry.word);
+        if(!key){ merged.push(entry); continue; }
+        if(indexByKey.has(key)){
+            const idx=indexByKey.get(key);
+            const prev=merged[idx];
+            merged[idx]={
+                ...prev,
+                ...entry,
+                word:entry.word||prev.word,
+                def:entry.def||prev.def||''
+            };
+        }else{
+            indexByKey.set(key, merged.length);
+            merged.push(entry);
+        }
+    }
+    return merged;
+}
 
 /* ══ 存储 ══ */
 function save(){ localStorage.setItem('uu_data_v3',JSON.stringify(data)); }
 function normalizeData(){
     if(!data.forgottenLib||typeof data.forgottenLib!=='object') data.forgottenLib={words:[]};
     if(!Array.isArray(data.forgottenLib.words)) data.forgottenLib.words=[];
+    data.forgottenLib.words=dedupeForgottenLibraryWords(data.forgottenLib.words);
     if(!data.dailyLog||typeof data.dailyLog!=='object') data.dailyLog={};
     if(!data.settings||typeof data.settings!=='object') data.settings={};
     if(typeof data.settings.dailyNewTarget!=='number'||data.settings.dailyNewTarget<1) data.settings.dailyNewTarget=DEFAULT_DAILY_NEW_TARGET;
@@ -887,9 +916,9 @@ function flatWords(){
 /* 库优先去重：库中存在的词在原批次的副本不再显示，避免同词重复 */
 function dedupLibPriority(items){
     const libSet=new Set();
-    for(const w of items) if(w._isForgot) libSet.add((w.word||'').toLowerCase());
+    for(const w of items) if(w._isForgot) libSet.add(normalizeWordKey(w.word));
     if(!libSet.size) return items;
-    return items.filter(w=>w._isForgot||!libSet.has((w.word||'').toLowerCase()));
+    return items.filter(w=>w._isForgot||!libSet.has(normalizeWordKey(w.word)));
 }
 function appFiltered(){
     const flat=flatWords();
@@ -923,10 +952,45 @@ function appUpdateStats(){
     document.getElementById('tabNew').textContent=c.newCount;
     document.getElementById('tabReview').textContent=c.due;
 }
+let speechKeepAliveTimer=null, speechReqId=0;
+function stopSpeechKeepAlive(){
+    if(speechKeepAliveTimer){
+        clearInterval(speechKeepAliveTimer);
+        speechKeepAliveTimer=null;
+    }
+}
 function speak(text){
-    if(!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text); u.lang='en-US'; speechSynthesis.speak(u);
+    const synth=window.speechSynthesis;
+    if(!synth||!text) return;
+    speechReqId++;
+    const reqId=speechReqId;
+    stopSpeechKeepAlive();
+    try{ synth.resume(); }catch(_e){}
+    if(synth.speaking||synth.pending){
+        try{ synth.cancel(); }catch(_e){}
+    }
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='en-US';
+    u.rate=0.92;
+    u.pitch=1;
+    u.volume=1;
+    u.onstart=function(){
+        stopSpeechKeepAlive();
+        speechKeepAliveTimer=setInterval(function(){
+            if(reqId!==speechReqId){ stopSpeechKeepAlive(); return; }
+            try{ synth.resume(); }catch(_e){}
+            if(!synth.speaking&&!synth.pending) stopSpeechKeepAlive();
+        },180);
+    };
+    u.onend=stopSpeechKeepAlive;
+    u.onerror=stopSpeechKeepAlive;
+    setTimeout(function(){
+        if(reqId!==speechReqId) return;
+        try{
+            synth.resume();
+            synth.speak(u);
+        }catch(_e){}
+    },60);
 }
 function appRender(){
     const list=document.getElementById('wordList');
@@ -978,12 +1042,13 @@ function revealRow(row, forceSpeak, silent){
 function addToForgottenLibrary(wordText, def){
     if(!data.forgottenLib) data.forgottenLib={words:[]};
     const lib=data.forgottenLib.words;
-    const key=(wordText||'').toLowerCase();
-    const idx=lib.findIndex(w=>(w.word||'').toLowerCase()===key);
-    const newEntry={word:wordText,def:def||'',step:0,done:false,lastDate:todayKey(),reviewStartDate:todayKey()};
+    const cleanWord=(wordText||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+    const key=normalizeWordKey(cleanWord);
+    const idx=lib.findIndex(w=>normalizeWordKey(w.word)===key);
+    const newEntry={word:cleanWord,def:(def||'').trim(),step:0,done:false,lastDate:todayKey(),reviewStartDate:todayKey()};
     if(idx>=0){
         const oldEntry={...lib[idx]};
-        lib[idx]=newEntry;
+        lib[idx]={...oldEntry,...newEntry,word:newEntry.word||oldEntry.word,def:newEntry.def||oldEntry.def||''};
         return {idx,existed:true,oldEntry};
     }else{
         lib.push(newEntry);
