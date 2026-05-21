@@ -415,7 +415,7 @@ input, textarea, select { font-family: inherit; }
     .adm-search { flex: 1 1 100%; min-width: 0; }
     .adm-word-bar .btn { flex: 1 1 calc(50% - 4px); min-width: 0; padding-left: 10px; padding-right: 10px; }
     .adm-table-wrap { overflow: auto; -webkit-overflow-scrolling: touch; }
-    .adm-table { min-width: 760px; display: table; }
+    .adm-table { min-width: 620px; width: 620px; display: table; table-layout: fixed; }
     .adm-table thead { display: table-header-group; }
     .adm-table tbody { display: table-row-group; }
     .adm-table tr {
@@ -425,15 +425,31 @@ input, textarea, select { font-family: inherit; }
     .adm-table tr:last-child td { border-bottom: none; }
     .adm-table tr.tr-done td { background: var(--green-bg); }
     .adm-table tr.tr-due td { background: #fff8f0; }
+    .adm-table th,
     .adm-table td {
-        display: table-cell; padding: 10px 14px;
+        padding-left: 10px; padding-right: 10px;
+    }
+    .adm-table td {
+        display: table-cell; padding-top: 10px; padding-bottom: 10px;
         border-bottom: 1px solid var(--admin-border);
         font-size: 13px; background: transparent; vertical-align: middle;
+    }
+    .adm-table th:nth-child(1), .adm-table td:nth-child(1) { width: 24%; }
+    .adm-table th:nth-child(2), .adm-table td:nth-child(2) { width: 28%; }
+    .adm-table th:nth-child(3), .adm-table td:nth-child(3) { width: 18%; }
+    .adm-table th:nth-child(4), .adm-table td:nth-child(4) { width: 20%; }
+    .adm-table th:nth-child(5), .adm-table td:nth-child(5) { width: 10%; }
+    .adm-table td:nth-child(1) strong,
+    .adm-table td:nth-child(2),
+    .adm-table td:nth-child(4) {
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }
     .adm-table td + td { margin-top: 0; }
     .adm-table td::before { content: none; }
     .adm-table td[data-col="actions"] .icon-act-row { justify-content: flex-start; }
-    .review-note { white-space: nowrap; }
+    .review-note { white-space: normal; }
 }
 
 @media (max-width: 520px) {
